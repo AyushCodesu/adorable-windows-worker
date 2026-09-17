@@ -1,0 +1,23 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# dependencies / caches
+node_modules/
+.bun/
+npm-debug.log*
+bun.lockb
+
+# build output / artifacts
+artifacts/
+dist/
+*.exe
+*.zip
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,142 @@
+name: adorable-windows-build
+
+# PHASE 25 (cloud) — Adorable on-demand Windows native build worker.
+#
+# Runs ONLY on the standard public `windows-latest` image (free minutes on
+# public repositories; no larger runners — there is intentionally no
+# runs-on matrix or input that could select one).
+#
+# Trust model:
+# - This repository is PUBLIC and contains NO secrets and NO user project
+#   source. It holds only worker mechanics (this workflow + scripts/).
+# - Per-build inputs carry safe identifiers ONLY (job/project/build ids,
+#   R2 source-bundle key + sha256, target, callback URL). NEVER prompts
+#   with secrets, NEVER api keys, NEVER source code.
+# - Private material arrives at runtime: the source bundle (hash-verified)
+#   and credentials, all via GitHub Actions Secrets / ephemeral inputs.
+# - All secrets are referenced as ${{ secrets.* }} and are never echoed;
+#   the workflow masks bundle keys are NOT secrets but they are still
+#   never printed (defense in depth for log hygiene).
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Adorable durable build job id (job_<hex>)"
+        required: true
+        type: string
+      project_id:
+        description: "Adorable project id (prj_<hex>)"
+        required: true
+        type: string
+      build_id:
+        description: "Opaque build id (build_<hex>)"
+        required: true
+        type: string
+      app_id:
+        description: "Stable application id (reverse-DNS)"
+        required: true
+        type: string
+      source_bundle_key:
+        description: "R2 key of the validated source bundle"
+        required: true
+        type: string
+      source_bundle_sha256:
+        description: "Expected SHA-256 of the source bundle JSON"
+        required: true
+        type: string
+      target_platform:
+        description: "Must be windows"
+        required: true
+        type: string
+      target_arch:
+        description: "Must be x64"
+        required: true
+        type: string
+      callback_url:
+        description: "Backend completion callback URL (https)"
+        required: true
+        type: string
+
+# Minimal permissions: read our own code, nothing else.
+permissions:
+  contents: read
+
+# One run per job; never auto-cancel (a dispatched build always reports).
+concurrency:
+  group: adorable-build-${{ inputs.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # FREE-TIER GUARDRAIL: standard public runner only. Do NOT change this
+    # to a larger runner without updating docs/cloud-architecture.md.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      ADORABLE_JOB_ID: ${{ inputs.job_id }}
+      ADORABLE_APP_ID: ${{ inputs.app_id }}
+      ADORABLE_BUILD_ID: ${{ inputs.build_id }}
+      # Secrets enter ONLY via env (never inputs, never logs). Each step
+      # reads only what it needs; nothing is echoed (see scripts/).
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      ADORABLE_CALLBACK_SECRET: ${{ secrets.ADORABLE_CALLBACK_SECRET }}
+      ADORABLE_CALLBACK_URL: ${{ inputs.callback_url }}
+      ADORABLE_SOURCE_BUNDLE_KEY: ${{ inputs.source_bundle_key }}
+      ADORABLE_SOURCE_BUNDLE_SHA256: ${{ inputs.source_bundle_sha256 }}
+    steps:
+      - name: Check out worker mechanics (public, no secrets, no user code)
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Fetch + verify source bundle
+        run: bun ./scripts/fetch-bundle.ts
+
+      - name: Install dependencies (no lifecycle scripts)
+        working-directory: ${{ runner.temp }}/adorable-ws
+        run: bun install --ignore-scripts --frozen-lockfile
+
+      - name: QuickGUI check
+        id: check
+        working-directory: ${{ runner.temp }}/adorable-ws
+        run: bunx quickgui check
+        continue-on-error: true
+
+      - name: QuickGUI build
+        id: build
+        working-directory: ${{ runner.temp }}/adorable-ws
+        run: bunx quickgui build
+        continue-on-error: true
+
+      - name: Security validation (trusted worker scripts, never app code)
+        run: bun ./scripts/validate.ts
+
+      - name: Native smoke (best-effort on headless runners)
+        run: bun ./scripts/smoke.ts
+        continue-on-error: true
+
+      - name: Hash + upload artifact and preview to R2
+        id: upload
+        run: bun ./scripts/upload.ts
+
+      - name: Mark failed builds for the reporter
+        if: always() && (steps.check.outcome != 'success' || steps.build.outcome != 'success' || steps.upload.outcome != 'success')
+        run: echo "ADORABLE_STEP_FAILED=1" >> $env:GITHUB_ENV
+
+      - name: Report completion to backend (retries waking free-tier hosts)
+        if: always()
+        run: bun ./scripts/report.ts
+
+      - name: Clean runner workspace (always)
+        if: always()
+        run: bun ./scripts/clean.ts
