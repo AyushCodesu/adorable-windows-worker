@@ -39,11 +39,13 @@ export interface R2Creds {
 }
 
 export function readCreds(): R2Creds {
+  // GitHub secret textareas can preserve a trailing newline when a value is pasted.
+  // Trim the values at the boundary so whitespace cannot corrupt SigV4 headers or URLs.
   const creds = {
-    accountId: process.env.R2_ACCOUNT_ID ?? "",
-    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
-    bucket: process.env.R2_BUCKET ?? "",
+    accountId: (process.env.R2_ACCOUNT_ID ?? "").trim(),
+    accessKeyId: (process.env.R2_ACCESS_KEY_ID ?? "").trim(),
+    secretAccessKey: (process.env.R2_SECRET_ACCESS_KEY ?? "").trim(),
+    bucket: (process.env.R2_BUCKET ?? "").trim(),
   };
   if (!creds.accountId || !creds.accessKeyId || !creds.secretAccessKey || !creds.bucket) {
     throw new Error("R2 credentials/bucket are not configured in this runner.");
@@ -64,7 +66,7 @@ async function signedFetch(
   contentType?: string,
 ): Promise<Response> {
   const parsed = new URL(url);
-  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\\.\\d+/, "");
   const dateStamp = amzDate.slice(0, 8);
   const payloadHash = await sha256Hex(body ?? new Uint8Array(0));
   const headers: Record<string, string> = {
@@ -74,7 +76,7 @@ async function signedFetch(
   };
   if (contentType) headers["content-type"] = contentType;
   const signedHeaders = Object.keys(headers).sort().join(";");
-  const canonicalHeaders = Object.keys(headers).sort().map((k) => `${k}:${headers[k]}\n`).join("");
+  const canonicalHeaders = Object.keys(headers).sort().map((k) => `${k}:${headers[k]}\\n`).join("");
   const canonical =
     [method, parsed.pathname.split("/").map((s) => encodeSigV4(s, true)).join("/") || "/", "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
   const scope = `${dateStamp}/auto/s3/aws4_request`;
