@@ -36,8 +36,11 @@ function appPrefix(): string {
   return `${process.env.ADORABLE_APP_ID ?? "app"}/${process.env.ADORABLE_BUILD_ID ?? "build"}`;
 }
 
+import { packageStandaloneWindows } from "./package.ts";
+
 const run = loadRunResult();
 const creds = readCreds();
+packageStandaloneWindows(run.wsDir);
 const exe = findExe(join(run.wsDir, "dist"));
 if (!exe || !existsSync(exe)) throw new Error("No executable produced by the build.");
 

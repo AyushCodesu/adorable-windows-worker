@@ -93,6 +93,17 @@ while (([Environment]::TickCount - $startTime) -lt $TimeoutMs) {
             $hwnd = $proc.MainWindowHandle
             break
         }
+        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        if ($children) {
+            foreach ($child in $children) {
+                $cp = Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue
+                if ($cp -and $cp.MainWindowHandle -ne [IntPtr]::Zero) {
+                    $hwnd = $cp.MainWindowHandle
+                    break
+                }
+            }
+            if ($hwnd -ne [IntPtr]::Zero) { break }
+        }
     } catch {
         Write-Output "ERROR:ProcessExited"
         exit 1

@@ -118,6 +118,11 @@ jobs:
         run: bunx quickgui build
         continue-on-error: true
 
+      - name: Package standalone executable
+        id: package
+        run: bun ./scripts/package.ts
+        continue-on-error: true
+
       - name: Security validation (trusted worker scripts, never app code)
         run: bun ./scripts/validate.ts
 
@@ -130,7 +135,7 @@ jobs:
         run: bun ./scripts/upload.ts
 
       - name: Mark failed builds for the reporter
-        if: always() && (steps.check.outcome != 'success' || steps.build.outcome != 'success' || steps.upload.outcome != 'success')
+        if: always() && (steps.check.outcome != 'success' || steps.build.outcome != 'success' || steps.package.outcome != 'success' || steps.upload.outcome != 'success')
         run: echo "ADORABLE_STEP_FAILED=1" >> $env:GITHUB_ENV
 
       - name: Report completion to backend (retries waking free-tier hosts)

@@ -35,7 +35,10 @@ function findExe(dir: string): string | null {
   return null;
 }
 
+import { packageStandaloneWindows } from "./package.ts";
+
 const wsDir = loadRunResult().wsDir;
+packageStandaloneWindows(wsDir);
 const exe = findExe(join(wsDir, "dist"));
 if (!exe || !existsSync(exe)) {
   saveRunResult({ launchOk: false, launchNote: "no-executable" });
