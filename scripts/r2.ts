@@ -66,7 +66,7 @@ async function signedFetch(
   contentType?: string,
 ): Promise<Response> {
   const parsed = new URL(url);
-  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\\.\\d+/, "");
+  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
   const dateStamp = amzDate.slice(0, 8);
   const payloadHash = await sha256Hex(body ?? new Uint8Array(0));
   const headers: Record<string, string> = {
@@ -76,7 +76,7 @@ async function signedFetch(
   };
   if (contentType) headers["content-type"] = contentType;
   const signedHeaders = Object.keys(headers).sort().join(";");
-  const canonicalHeaders = Object.keys(headers).sort().map((k) => `${k}:${headers[k]}\\n`).join("");
+  const canonicalHeaders = Object.keys(headers).sort().map((k) => `${k}:${headers[k]}\n`).join("");
   const canonical =
     [method, parsed.pathname.split("/").map((s) => encodeSigV4(s, true)).join("/") || "/", "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
   const scope = `${dateStamp}/auto/s3/aws4_request`;
@@ -98,21 +98,27 @@ export async function r2Get(creds: R2Creds, key: string): Promise<Uint8Array | n
     const res = await signedFetch(creds, "GET", objectUrl(creds, key));
     if (res.ok) return new Uint8Array(await res.arrayBuffer());
 
+    const errorBody = await res.text().catch(() => "");
     // A 403 is a permissions/credentials problem, not a missing object.
     // Keep that distinction visible so the remote failure cannot masquerade as 404.
-    if (res.status === 403) throw new Error("R2 download forbidden (HTTP 403): worker credentials or bucket permissions are incorrect.");
+    if (res.status === 403) {
+      throw new Error(`R2 download forbidden (HTTP 403): ${errorBody.slice(0, 300) || "worker credentials or bucket permissions are incorrect."}`);
+    }
     if (res.status === 404) {
       if (attempt < delays.length - 1) continue;
-      throw new Error("R2 source bundle missing (HTTP 404): the worker cannot find the exact uploaded object.");
+      throw new Error(`R2 source bundle missing (HTTP 404): ${errorBody.slice(0, 300) || "the worker cannot find the exact uploaded object."}`);
     }
-    throw new Error(`R2 download failed (HTTP ${res.status}).`);
+    throw new Error(`R2 download failed (HTTP ${res.status}): ${errorBody.slice(0, 300)}`);
   }
   return null;
 }
 
 export async function r2Put(creds: R2Creds, key: string, bytes: Uint8Array, contentType: string): Promise<void> {
   const res = await signedFetch(creds, "PUT", objectUrl(creds, key), bytes, contentType);
-  if (!res.ok) throw new Error(`R2 upload failed (HTTP ${res.status}).`);
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "");
+    throw new Error(`R2 upload failed (HTTP ${res.status}): ${errorBody.slice(0, 300)}`);
+  }
 }
 
 export interface RunResult {
