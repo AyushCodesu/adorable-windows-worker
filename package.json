@@ -1,0 +1,14 @@
+{
+  "name": "adorable-windows-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "validate": "bun run scripts/ci-validate.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.1",
+    "typescript": "^7.0.2"
+  }
+}
