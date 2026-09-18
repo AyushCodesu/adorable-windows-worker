@@ -59,10 +59,15 @@ try {
     if (pngBytes.length > 0) {
       previewKey = `${appPrefix()}/preview.png`;
       await r2Put(creds, previewKey, pngBytes, "image/png");
+      console.log(`Uploaded preview screenshot to ${previewKey} (${pngBytes.length} bytes).`);
+    } else {
+      console.log("Preview screenshot exists but was empty (0 bytes).");
     }
+  } else {
+    console.log("No preview screenshot found at artifacts/preview.png.");
   }
-} catch {
-  /* preview best-effort */
+} catch (err) {
+  console.log(`Preview upload error (best-effort): ${(err as Error)?.message ?? err}`);
 }
 saveRunResult({
   artifactKey,

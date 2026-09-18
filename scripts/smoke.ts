@@ -58,7 +58,7 @@ try {
     const outPng = join(wsDir, "artifacts", "preview.png");
     mkdirSync(join(wsDir, "artifacts"), { recursive: true });
     const cap = Bun.spawnSync(
-      ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-ProcessId", String(pid), "-OutputPath", outPng, "-TimeoutMs", "12000"],
+      ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-ProcessId", String(pid), "-OutputPath", outPng, "-TimeoutMs", "20000"],
       { stdin: "ignore", stdout: "pipe", stderr: "pipe" },
     );
     const text = new TextDecoder().decode(cap.stdout).trim();
