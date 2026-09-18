@@ -92,10 +92,22 @@ async function signedFetch(
 }
 
 export async function r2Get(creds: R2Creds, key: string): Promise<Uint8Array | null> {
-  const res = await signedFetch(creds, "GET", objectUrl(creds, key));
-  if (res.status === 404 || res.status === 403) return null;
-  if (!res.ok) throw new Error(`R2 download failed (HTTP ${res.status}).`);
-  return new Uint8Array(await res.arrayBuffer());
+  const delays = [0, 750, 1500];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    const res = await signedFetch(creds, "GET", objectUrl(creds, key));
+    if (res.ok) return new Uint8Array(await res.arrayBuffer());
+
+    // A 403 is a permissions/credentials problem, not a missing object.
+    // Keep that distinction visible so the remote failure cannot masquerade as 404.
+    if (res.status === 403) throw new Error("R2 download forbidden (HTTP 403): worker credentials or bucket permissions are incorrect.");
+    if (res.status === 404) {
+      if (attempt < delays.length - 1) continue;
+      throw new Error("R2 source bundle missing (HTTP 404): the worker cannot find the exact uploaded object.");
+    }
+    throw new Error(`R2 download failed (HTTP ${res.status}).`);
+  }
+  return null;
 }
 
 export async function r2Put(creds: R2Creds, key: string, bytes: Uint8Array, contentType: string): Promise<void> {
